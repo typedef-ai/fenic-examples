@@ -50,11 +50,18 @@ export HF_TOKEN="your-huggingface-token"
 First, download and load the Hacker News dataset from HuggingFace:
 
 ```bash
-cd src
 HF_TOKEN=$HF_TOKEN uv run python -m hn_agent.data.loader
 ```
 
-This downloads ~2.5M comments and ~500K stories from 2025 into a local DuckDB database.
+This downloads ~2.5M comments and ~500K stories from 2025 into a local DuckDB database at `src/assets/data/hn_agent.duckdb`.
+
+**What happens during loading:**
+1. Downloads 10 base tables from HuggingFace (items, comments, users, etc.)
+2. **Denormalizes data** - Creates optimized lookup tables:
+   - `comment_to_story` - Maps every comment to its root story (~2.5M rows)
+   - `story_threads` - Precomputed thread structures with hierarchical paths (~2.8M rows)
+   - `story_discussions` - Formatted markdown discussions with metadata (~287K rows)
+3. These denormalized tables eliminate the need for recursive SQL queries during tool execution, significantly improving performance.
 
 ### 2. Run the MCP Server
 
@@ -94,8 +101,10 @@ hn_agent/
 ├── src/hn_agent/
 │   ├── agent/          # Research agent implementation
 │   │   └── research.py  # PydanticAI agent for deep research
-│   ├── data/           # Data loading utilities
-│   │   └── loader.py   # HuggingFace dataset loader
+│   ├── data/           # Data loading and processing
+│   │   ├── loader.py   # HuggingFace dataset loader
+│   │   ├── denormalize.py  # Creates optimized lookup tables
+│   │   └── format_threads.py  # Formats threads as markdown
 │   ├── mcp/            # MCP server
 │   │   └── server.py   # HTTP MCP server implementation
 │   ├── tools/          # Tool definitions
@@ -104,15 +113,19 @@ hn_agent/
 │   ├── session.py      # Fenic session management
 │   └── cli.py          # Command-line interface
 └── assets/data/        # Local DuckDB storage (created on first run)
+    └── hn_agent.duckdb  # DuckDB database file
 ```
 
 ## Available Tools
+
+All tools use **denormalized lookup tables** for fast execution without recursive SQL queries.
 
 ### search_stories
 Search across HN stories and comments using regex patterns:
 ```python
 pattern: "(?i)(rust|golang|python)"  # Case-insensitive search
 # Returns: Ranked stories with title, score, comment count
+# Uses: comment_to_story lookup table
 ```
 
 ### read_story
@@ -120,6 +133,7 @@ Fetch complete story with comment hierarchy:
 ```python
 story_id: 45389500
 # Returns: Story metadata + all comments with depth/path structure
+# Uses: story_threads precomputed hierarchy
 ```
 
 ### summarize_story
@@ -129,6 +143,7 @@ story_id: 45389500
 language: "en"  # Output language
 extra_instructions: "Focus on technical details"
 # Returns: Structured summary with themes, controversies, action items
+# Uses: story_discussions formatted markdown
 ```
 
 ## Research Agent
@@ -152,14 +167,20 @@ Example output:
 ### Running Individual Components
 
 ```bash
-# Test data loading
-uv run python -m hn_agent.data.loader
+# Load data (downloads + denormalizes)
+HF_TOKEN=$HF_TOKEN uv run python -m hn_agent.data.loader
+
+# Re-run only denormalization (if you already have base data)
+uv run python -m hn_agent.data.denormalize
+
+# Re-run only thread formatting
+uv run python -m hn_agent.data.format_threads
 
 # Start MCP server (automatically registers tools)
 uv run python -m hn_agent.mcp.server
 
 # Run research CLI
-uv run python -m hn_agent.cli "Your research question"
+OPENAI_API_KEY=$OPENAI_API_KEY uv run python -m hn_agent.cli "Your research question"
 ```
 
 ### Python API
