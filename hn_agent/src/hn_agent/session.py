@@ -25,9 +25,12 @@ class SessionManager:
         """Get or create the Fenic session."""
         if self._session is None:
             # Create data directory if it doesn't exist
-            data_dir = Path("assets/data")
+            # Use path relative to src/hn_agent (this file's directory)
+            # So data goes in src/assets/data
+            data_dir = Path(__file__).parent.parent / "assets" / "data"
             data_dir.mkdir(parents=True, exist_ok=True)
-            
+
+            # db_path is the directory - Fenic appends "{app_name}.duckdb"
             # Build config with semantic support if API key available
             config_kwargs = {
                 "app_name": "hn_agent",

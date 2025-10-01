@@ -62,15 +62,16 @@ def register_story_search_tool(
     # Get tables
     items = session.table("items").filter(fc.col("type") == fc.lit("story"))
     comments = session.table("comments")
-    
+    comment_to_story = session.table("comment_to_story")  # Use denormalized table
+
     # Tool parameters
     pattern = fc.tool_param("pattern", StringType)
-    
+
     # Story-side matches
     title_match = fc.coalesce(fc.col("title"), fc.lit("")).rlike(pattern)
     url_match = fc.coalesce(fc.col("url"), fc.lit("")).rlike(pattern)
     story_text_match = fc.coalesce(fc.col("text"), fc.lit("")).rlike(pattern)
-    
+
     story_hits = (
         items.with_column("title_match", title_match)
         .with_column("url_match", url_match)
@@ -94,37 +95,22 @@ def register_story_search_tool(
             fc.col("match_rank"),
         )
     )
-    
-    # Comment-side matches - always included but LIMIT to prevent memory explosion
+
+    # Comment-side matches - use denormalized lookup table (no recursion!)
     comment_text_match = fc.coalesce(fc.col("text"), fc.lit("")).rlike(pattern)
     matched_comments = (
         comments
         .filter(comment_text_match)
-        .select(fc.col("id"), fc.col("parent").alias("parent_id"))
+        .select(fc.col("id").alias("comment_id"))
         .limit(5000)  # Limit matched comments to prevent memory issues
     )
-    
-    # Recursive SQL to trace comments back to root stories with depth limit
-    comment_to_story_sql = """
-        WITH RECURSIVE up(comment_id, parent_id, depth) AS (
-            SELECT id, parent_id, 0 FROM {matched}
-            UNION ALL
-            SELECT up.comment_id, c.parent, up.depth + 1
-            FROM up
-            JOIN {all_comments} AS c ON c.id = up.parent_id
-            WHERE up.parent_id IS NOT NULL
-              AND up.depth < 20  -- Max depth to prevent runaway recursion
-        )
-        SELECT DISTINCT s.id AS story_id
-        FROM up
-        JOIN {stories} AS s ON up.parent_id = s.id
-    """
-    
-    comment_stories = session.sql(
-        comment_to_story_sql,
-        matched=matched_comments,
-        all_comments=comments,
-        stories=items,
+
+    # Fast lookup using denormalized comment_to_story table
+    comment_stories = (
+        matched_comments
+        .join(comment_to_story, on="comment_id")
+        .select(fc.col("story_id"))
+        .drop_duplicates(["story_id"])
     )
     
     comment_hits = (
@@ -227,59 +213,20 @@ def register_read_story_tool(
     except:
         pass  # Tool doesn't exist, continue
     
-    # Data sources (removed typedef_default prefix)
+    # Data sources - use denormalized story_threads table
     items = session.table("items").filter(fc.col("type") == fc.lit("story"))
-    comments = session.table("comments")
     users = session.table("users")
-    
+    story_threads = session.table("story_threads")  # Denormalized thread data
+
     # Tool parameters
     story_id = fc.tool_param("story_id", IntegerType)
-    # Note: include_comments parameter removed as it can't be used in SQL directly
-    
+
     # Root story selection (parameterized)
     root = items.filter(fc.col("id") == story_id)
-    
-    # SQL to get story and all comments with depth limit
+
+    # Use denormalized story_threads table (no recursion!)
     sql = """
-        WITH RECURSIVE thread AS (
-            -- Get the story itself
-            SELECT
-                i.id,
-                i.parent,
-                0 AS depth,
-                lpad(CAST(i.id AS VARCHAR), 10, '0') AS path,
-                i.title,
-                i.url,
-                i.text,
-                i.by,
-                i.score,
-                i.time,
-                TIMESTAMP '1970-01-01' + CAST(i.time AS BIGINT) * INTERVAL 1 SECOND AS ts,
-                i.type
-            FROM {items} AS i
-            WHERE i.id IN (SELECT id FROM {root})
-
-            UNION ALL
-
-            -- Recursively get comments up to depth 10
-            SELECT
-                c.id,
-                c.parent,
-                t.depth + 1,
-                t.path || '.' || lpad(CAST(c.id AS VARCHAR), 10, '0') AS path,
-                c.title,
-                c.url,
-                c.text,
-                c.by,
-                c.score,
-                c.time,
-                TIMESTAMP '1970-01-01' + CAST(c.time AS BIGINT) * INTERVAL 1 SECOND AS ts,
-                c.type
-            FROM {comments} AS c
-            JOIN thread AS t ON c.parent = t.id
-            WHERE t.depth < 10  -- Limit recursion depth
-        ),
-        meta AS (
+        WITH meta AS (
             SELECT
                 i.id AS story_id,
                 i.title,
@@ -295,6 +242,11 @@ def register_read_story_tool(
                 TIMESTAMP '1970-01-01' + CAST(u.created AS BIGINT) * INTERVAL 1 SECOND AS author_created_at
             FROM {root} AS i
             LEFT JOIN {users} AS u ON u.id = i.by
+        ),
+        thread AS (
+            SELECT *
+            FROM {story_threads}
+            WHERE story_id IN (SELECT id FROM {root})
         ),
         stats AS (
             SELECT
@@ -318,25 +270,24 @@ def register_read_story_tool(
             s.comments_count,
             s.unique_commenters_count,
             COALESCE(s.max_depth, 0) AS max_depth,
-            t.id AS node_id,
-            t.parent,
+            t.node_id,
+            t.parent_id AS parent,
             t.depth,
             t.path,
             t.by AS node_by,
-            t.ts AS node_ts,
+            TIMESTAMP '1970-01-01' + CAST(t.time AS BIGINT) * INTERVAL 1 SECOND AS node_ts,
             t.score AS node_score,
             t.text AS node_text
         FROM meta AS m, stats AS s, thread AS t
         ORDER BY t.path
     """
-    
+
     # Execute SQL query
     result_df = session.sql(
         sql,
-        items=items, 
-        comments=comments, 
-        users=users, 
-        root=root
+        root=root,
+        users=users,
+        story_threads=story_threads
     )
     
     tool_params = [
@@ -448,101 +399,40 @@ def register_summarize_story_tool(
     except:
         pass  # Tool doesn't exist, continue
     
-    # Data sources
-    items = session.table("items").filter(fc.col("type") == fc.lit("story"))
-    comments = session.table("comments")
-    
+    # Data sources - use preformatted story_discussions table
+    story_discussions = session.table("story_discussions")
+
     # Tool parameters
     story_id = fc.tool_param("story_id", IntegerType)
     extra_instructions = fc.tool_param("extra_instructions", StringType)
     language_param = fc.tool_param("language", StringType)
-    # Note: max_transcript_chars removed as it can't be used in SQL directly
-    
-    # Root story selection
-    root = items.filter(fc.col("id") == story_id)
-    
-    # SQL for building transcript
-    sql = """
-        WITH RECURSIVE thread AS (
-            -- Get story
-            SELECT
-                i.id, i.parent, 0 AS depth,
-                lpad(CAST(i.id AS VARCHAR), 10, '0') AS path,
-                i.text, i.by, i.score, i.type
-            FROM {items} AS i
-            WHERE i.id IN (SELECT id FROM {root})
-            
-            UNION ALL
-            
-            -- Get comments
-            SELECT
-                c.id, c.parent, t.depth + 1,
-                t.path || '.' || lpad(CAST(c.id AS VARCHAR), 10, '0'),
-                c.text, c.by, c.score, c.type
-            FROM {comments} AS c
-            JOIN thread AS t ON c.parent = t.id
-        ),
-        formatted AS (
-            SELECT
-                CASE
-                    WHEN depth = 0 THEN '[STORY] ' || COALESCE(text, '')
-                    ELSE repeat('  ', depth) || '- [' || COALESCE(by, 'deleted') || ']: ' || COALESCE(text, '')
-                END AS line,
-                path,
-                type = 'comment' AS is_comment
-            FROM thread
-            WHERE text IS NOT NULL AND text != ''
-            ORDER BY path
-        ),
-        transcript AS (
-            SELECT
-                string_agg(line, '\n') AS full_transcript,
-                CAST(SUM(CASE WHEN is_comment THEN 1 ELSE 0 END) AS BIGINT) AS comments_count,
-                MAX(is_comment) AS has_comments
-            FROM formatted
-        ),
-        meta AS (
-            SELECT
-                CAST(i.id AS BIGINT) AS story_id,
-                i.title,
-                i.url,
-                regexp_extract(i.url, '^(?:https?://)?(?:www\\.)?([^/]+)', 1) AS domain,
-                CAST(i.score AS BIGINT) AS score,
-                CAST(i.descendants AS BIGINT) AS descendants,
-                TIMESTAMP '1970-01-01' + CAST(i.time AS BIGINT) * INTERVAL 1 SECOND AS published_at
-            FROM {root} AS i
-        ),
-        combined AS (
-            SELECT 
-                m.*,
-                t.full_transcript,
-                t.comments_count,
-                t.has_comments,
-                -- Use fixed max chars value
-                12000 AS char_limit
-            FROM meta m
-            CROSS JOIN transcript t
-        ),
-        final AS (
-            SELECT
-                *,
-                LENGTH(full_transcript) > char_limit AS truncated_input,
-                CASE 
-                    WHEN LENGTH(full_transcript) > char_limit 
-                    THEN SUBSTR(full_transcript, 1, char_limit)
-                    ELSE full_transcript
-                END AS transcript_limited
-            FROM combined
+
+    # Simple lookup from story_discussions table (no recursion, no formatting!)
+    # Use DataFrame API instead of SQL for parameterized filtering
+    base = (
+        story_discussions
+        .filter(fc.col("story_id") == story_id)
+        .with_column("score", fc.col("story_score"))
+        .with_column("descendants", fc.col("comment_count"))
+        .with_column("comments_count", fc.col("comment_count"))
+        .with_column("full_transcript", fc.col("markdown_thread"))
+        .with_column("truncated_input", fc.lit(False))  # Simplified - will be computed in SQL if needed
+        .with_column("transcript_limited", fc.col("markdown_thread"))  # Use full transcript
+        .with_column("has_comments", fc.col("comment_count") > fc.lit(0))
+        .select(
+            fc.col("story_id"),
+            fc.col("title"),
+            fc.col("url"),
+            fc.col("domain"),
+            fc.col("published_at"),
+            fc.col("score"),
+            fc.col("descendants"),
+            fc.col("comments_count"),
+            fc.col("full_transcript"),
+            fc.col("truncated_input"),
+            fc.col("transcript_limited"),
+            fc.col("has_comments")
         )
-        SELECT * FROM final
-    """
-    
-    # Execute SQL query
-    base = session.sql(
-        sql,
-        items=items,
-        comments=comments,
-        root=root
     )
     
     # Add default values for optional parameters
