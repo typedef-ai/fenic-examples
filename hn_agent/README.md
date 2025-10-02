@@ -8,6 +8,8 @@ For more about fenic:
 
 📚 [Read the Docs](https://docs.fenic.ai) | 💬 [Join Discord](https://discord.com/invite/GdqF3J7huR) | ⭐️ [Star Fenic](https://github.com/typedef-ai/fenic)
 
+![HN Agent Demo](assets/agent.png)
+
 ## What You Can Do
 
 - **Deep Research on HN Discussions**: Ask complex questions and get synthesized answers from across hundreds of HN threads - "What do developers think about microservices in 2025?" or "What are the main criticisms of Rust?"

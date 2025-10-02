@@ -42,7 +42,7 @@ class SessionManager:
                 config_kwargs["semantic"] = SemanticConfig(
                     language_models={
                         "gpt4": OpenAILanguageModel(
-                            model_name="gpt-4o-mini",
+                            model_name="gpt-5-nano",
                             rpm=100,
                             tpm=100000
                         )
