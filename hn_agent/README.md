@@ -4,9 +4,13 @@ A deep research agent for Hacker News that uses AI to analyze discussions and ex
 
 This agent is built by combining together the power of fenic and Pydantic AI.
 
-For more about fenic:
-
-📚 [Read the Docs](https://docs.fenic.ai) | 💬 [Join Discord](https://discord.com/invite/GdqF3J7huR) | ⭐️ [Star Fenic](https://github.com/typedef-ai/fenic)
+<div align="center">
+  <h3>
+    <a href="https://discord.com/invite/GdqF3J7huR">💬 Join Discord</a>
+    &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/typedef-ai/fenic">⭐️ Check out Fenic</a>
+  </h3>
+</div>
 
 ![HN Agent Demo](assets/agent.png)
 
