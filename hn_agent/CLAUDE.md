@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Hacker News agent built with Fenic - a PySpark-inspired DataFrame framework with semantic AI capabilities. The project demonstrates how to build production AI agents that combine structured data processing with LLM operations.
+This is a Hacker News agent built with fenic - a PySpark-inspired DataFrame framework with semantic AI capabilities. The project demonstrates how to build production AI agents that combine structured data processing with LLM operations.
 
 ## Development Environment
 
@@ -20,10 +20,10 @@ This project uses `uv` for dependency management. Always use `uv` commands for p
 - `pydantic-ai[mcp]>=1.0.10` - Pydantic AI with MCP integration
 - `duckdb==1.3.0` - Local SQL engine for data operations
 
-## Fenic Framework Patterns
+## fenic Framework Patterns
 
 ### Session Creation
-Always create a Fenic session with semantic configuration:
+Always create a fenic session with semantic configuration:
 ```python
 from fenic.api.session import Session
 from fenic.api.session.config import SessionConfig, SemanticConfig, OpenAILanguageModel
@@ -113,10 +113,10 @@ session.catalog.create_tool(
   - MCP server configurations
   - Data processing pipelines
 - `assets/data/` - Local data files (currently empty)
-- Project uses Fenic's lazy evaluation - build query plans first, execute only when needed
+- Project uses fenic's lazy evaluation - build query plans first, execute only when needed
 
 ### Error Handling
-Fenic operations that fail return None instead of raising exceptions for:
+fenic operations that fail return None instead of raising exceptions for:
 - Semantic operations with invalid inputs
 - Async UDF failures
 - Missing columns in lazy evaluation are caught at execution time
@@ -151,7 +151,7 @@ metrics_df = session.table("fenic_system.query_metrics")
 metrics_df.filter(fc.col("total_lm_cost") > 0).show()
 ```
 
-## Comprehensive Fenic Reference
+## Comprehensive fenic Reference
 
 ### DataFrame Operations
 

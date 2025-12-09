@@ -8,7 +8,7 @@ This agent is built by combining together the power of fenic and Pydantic AI.
   <h3>
     <a href="https://discord.com/invite/GdqF3J7huR">💬 Join Discord</a>
     &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
-    <a href="https://github.com/typedef-ai/fenic">⭐️ Check out Fenic</a>
+    <a href="https://github.com/typedef-ai/fenic">⭐️ Check out fenic</a>
   </h3>
 </div>
 
@@ -32,7 +32,7 @@ This agent is built by combining together the power of fenic and Pydantic AI.
 
 The project uses:
 
-- **Fenic**: PySpark-inspired DataFrame framework for data operations and MCP tooling
+- **fenic**: PySpark-inspired DataFrame framework for data operations and MCP tooling
 - **PydanticAI**: Agent framework for orchestrating research
 - **Your favorite LLM**: For semantic analysis and summarization
 - **HuggingFace**: For storing and retrieving the datasets
@@ -130,7 +130,7 @@ hn_agent/
 │   ├── tools/          # Tool definitions
 │   │   ├── tools.py    # MCP tool registration
 │   │   └── models.py   # Pydantic models for structured output
-│   ├── session.py      # Fenic session management
+│   ├── session.py      # fenic session management
 │   └── cli.py          # Command-line interface
 └── assets/data/        # Local DuckDB storage (created on first run)
     └── hn_agent.duckdb  # DuckDB database file
@@ -242,10 +242,10 @@ Enhance the source citations by including direct HN URLs for each story and comm
 Extend the dataset beyond 2025 to include multiple years of HN data. This would enable true trend analysis - tracking how opinions on technologies, practices, or companies evolved over time. You could visualize sentiment changes, identify inflection points in community opinion, and spot emerging trends before they go mainstream.
 
 ### 6. Semantic Clustering of Discussions
-Use Fenic's semantic clustering capabilities to automatically group similar discussions together, even if they use different terminology. This could reveal that conversations about "remote work", "distributed teams", and "WFH culture" are actually part of the same broader discussion cluster.
+Use fenic's semantic clustering capabilities to automatically group similar discussions together, even if they use different terminology. This could reveal that conversations about "remote work", "distributed teams", and "WFH culture" are actually part of the same broader discussion cluster.
 
 ## Credits
 
 - Dataset: [HuggingFace Hacker News Dataset](https://huggingface.co/datasets/typedef-ai/hacker-news-dataset)
-- Framework: [Fenic](https://github.com/fenic-ai/fenic)
+- Framework: [fenic](https://github.com/fenic-ai/fenic)
 - Agent: [PydanticAI](https://github.com/pydantic/pydantic-ai)
